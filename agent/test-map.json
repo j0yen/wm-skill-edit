@@ -1,0 +1,12 @@
+{
+  "schema": "autobuilder.test_map.v1",
+  "tests": [
+    { "id": "AC1", "file": "tests/acceptance_ac1.rs", "test_name": "acceptance_ac1_insert_idempotent" },
+    { "id": "AC2", "file": "tests/acceptance_ac2.rs", "test_name": "acceptance_ac2_skill_not_allowed" },
+    { "id": "AC3", "file": "tests/acceptance_ac3.rs", "test_name": "acceptance_ac3_anchor_not_unique" },
+    { "id": "AC4", "file": "tests/acceptance_ac4.rs", "test_name": "acceptance_ac4_anchor_not_found" },
+    { "id": "AC5", "file": "tests/acceptance_ac5.rs", "test_name": "acceptance_ac5_backup_and_revert" },
+    { "id": "AC6", "file": "tests/acceptance_ac6.rs", "test_name": "acceptance_ac6_allowlist_coverage" },
+    { "id": "AC7", "file": "tests/acceptance_ac7.rs", "test_name": "acceptance_ac7_skill_file_missing" }
+  ]
+}

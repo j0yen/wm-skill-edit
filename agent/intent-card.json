@@ -1,0 +1,124 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/wintermute/autobuilder/PRD-build-skill-edit-allowlist.md",
+  "intent_slug": "wm-skill-edit",
+  "root_motivation": "Self-modifying /build branch agents stall on per-command classifier blocks when editing SKILL.md files. The root problem is not the raw Edit tool—it's that no allow-listed wrapper exists for SKILL.md mutations, so every tick that needs to wire a new capability hits a permission wall and wastes a build slot. Ship a narrow guarded wrapper + one allow rule so auto-mode branches can durably perform anchored idempotent SKILL.md edits without triggering the classifier.",
+  "user_persona": "Claude /build branch agents running in auto-mode on this laptop, advancing PRDs that require wiring new capabilities into skill files (e.g. autobuilder SKILL.md Stage 3/4 rows). Also Joe Yen who occasionally needs to revert a bad skill edit.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "cargo test --workspace --no-fail-fast 2>&1 | grep -cE '^test acceptance_[a-z0-9_]+ \\.\\.\\.\\s+ok' || true",
+    "target": 6
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "wm-skill-edit --skill autobuilder --anchor '<KNOWN-LINE>' --after '<NEW>' inserts <NEW> once; a second identical invocation is a no-op (exit 0, file unchanged).",
+      "test": "tests/acceptance_ac1.rs — write a tmp SKILL.md with a known anchor, invoke binary twice, assert line inserted exactly once and second run exits 0 with file unchanged."
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "--skill not-in-allowlist exits 2 with stderr containing 'skill-not-allowed'.",
+      "test": "tests/acceptance_ac2.rs — invoke with --skill definitely-not-allowed, assert exit code 2 and stderr contains 'skill-not-allowed'."
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "--anchor '<ambiguous>' that matches >1 line in the SKILL.md exits 2 with 'anchor-not-unique'; no file write occurs.",
+      "test": "tests/acceptance_ac3.rs — SKILL.md with two identical lines as anchor, assert exit 2, stderr 'anchor-not-unique', file unmodified."
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "--anchor '<absent>' exits 2 with 'anchor-not-found'; no write occurs.",
+      "test": "tests/acceptance_ac4.rs — SKILL.md with no line matching anchor, assert exit 2, stderr 'anchor-not-found', file unmodified."
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Every successful edit writes exactly one SKILL.md.bak.<ts>; --revert <skill> restores the file byte-for-byte.",
+      "test": "tests/acceptance_ac5.rs — perform an edit, assert one bak file created, invoke --revert, assert file byte-for-byte matches original."
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "The SKILL.md allowlist contains exactly: autobuilder, build, self-review, dream, triage.",
+      "test": "tests/acceptance_ac6.rs — invoke binary with each allowed skill (using a tmp dir as skill root) and confirm no 'skill-not-allowed' error; confirm that a 6th slug fails."
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Guard: target SKILL.md missing → exit 2 with 'skill-file-missing'.",
+      "test": "tests/acceptance_ac7.rs — skill in allowlist but SKILL.md absent, assert exit 2 and 'skill-file-missing'."
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Binary is installed to ~/.local/bin/wm-skill-edit and is executable.",
+      "test": "cargo install --path . --root ~/.local runs cleanly; test via assert!(std::path::Path::new('/home/jsy/.local/bin/wm-skill-edit').exists()) or build-time check."
+    }
+  ],
+  "scope": [
+    "A Rust CLI binary 'wm-skill-edit' installed to ~/.local/bin/",
+    "ALLOW array of skill slugs: autobuilder, build, self-review, dream, triage",
+    "Operation --skill <slug> --anchor <unique-substr> --after <text>: insert <text> after anchor line; idempotent",
+    "Operation --revert <slug>: restore most recent SKILL.md.bak.<ts>",
+    "Guards: skill-not-allowed, skill-file-missing, anchor-not-found, anchor-not-unique",
+    "Timestamped backup SKILL.md.bak.<ts> written before every mutation",
+    "Skill root resolved as ~/.claude/skills/<slug>/SKILL.md"
+  ],
+  "non_goals": [
+    "No arbitrary path edits — SKILL.md only",
+    "No state/ or scripts/ sibling file edits",
+    "No settings.json edits",
+    "No network access",
+    "No --replace-block operation (deferred to v2)",
+    "No markdownlint line-length sanity check (deferred; guards focus on anchor uniqueness)"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": 5,
+    "msrv": "1.85",
+    "additional": {
+      "install_target": "~/.local/bin/wm-skill-edit",
+      "allow_list_locked": "autobuilder,build,self-review,dream,triage"
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why do /build branch agents need a CLI wrapper to edit SKILL.md?",
+      "a": "Because raw Edit calls to ~/.claude/skills/*/SKILL.md trip the self-modification classifier on every call — consent from one step does not propagate to the next."
+    },
+    {
+      "why": 2,
+      "q": "Why does per-command evaluation cause the build to stall rather than just prompt once?",
+      "a": "Because the PRD advances multiple ticks and the classifier re-evaluates independently each tick, so no amount of prior consent carries over — each tick gets blocked again."
+    },
+    {
+      "why": 3,
+      "q": "Why not just add a blanket allow rule for Edit on skill files?",
+      "a": "Because that would allow unbounded writes to any line of any skill, which is unsafe. The right fix narrows both the allowed paths (ALLOW list) and the allowed operation (anchored idempotent insert with backup)."
+    },
+    {
+      "why": 4,
+      "q": "Why must the operation be anchored and idempotent rather than append-only?",
+      "a": "Append-only edits accumulate duplicates across retried ticks; anchoring to a unique substring ensures the right insertion point and idempotency ensures retries are safe."
+    }
+  ],
+  "ambiguities_resolved": [
+    {
+      "question": "Should --replace-block be implemented in this iteration?",
+      "resolution": "No — deferred to v2 to keep this iter-1 scope tight. --after only."
+    },
+    {
+      "question": "What is the skill root path?",
+      "resolution": "~/.claude/skills/<slug>/SKILL.md — hardcoded in the binary, not configurable, to match the actual deployment layout."
+    }
+  ],
+  "created_at": "2026-05-29T00:00:00Z"
+}
