@@ -15,15 +15,14 @@
 //! - `--skill <slug> --anchor <substr> --after <text>` — idempotent insert
 //! - `--revert <slug>` — restore most-recent backup
 
+#![allow(clippy::print_stderr)] // CLI binary: stderr is the intended diagnostic channel.
+
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Slugs this binary may touch.
 const ALLOW: &[&str] = &["autobuilder", "build", "self-review", "dream", "triage"];
-
-/// Skills root directory.
-const SKILLS_ROOT: &str = "~/.claude/skills";
 
 /// `wm-skill-edit` — anchored idempotent SKILL.md edits for allow-listed skills.
 #[derive(Debug, Parser)]
@@ -117,22 +116,20 @@ fn run_insert(slug: &str, anchor: &str, after_text: &str) -> Result<(), String> 
         .map(|(i, _)| i)
         .collect();
 
-    match matches.len() {
+    let anchor_idx = match matches.len() {
         0 => {
             eprintln!("anchor-not-found: no line contains '{anchor}'");
             return Err("anchor-not-found".into());
         }
-        1 => {} // good
+        1 => matches.first().copied().unwrap_or(0),
         n => {
             eprintln!("anchor-not-unique: {n} lines contain '{anchor}'");
             return Err("anchor-not-unique".into());
         }
-    }
-
-    let anchor_idx = matches[0];
+    };
 
     // 5. Idempotency: check if after_text already follows anchor.
-    if anchor_idx + 1 < lines.len() && lines[anchor_idx + 1] == after_text {
+    if lines.get(anchor_idx + 1).copied() == Some(after_text) {
         // Already inserted — no-op.
         return Ok(());
     }
